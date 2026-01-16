@@ -1,8 +1,8 @@
-masb.sh
+masb.sh update Encrypt.sh
 
 Alpine Linux 下的 sing-box 一键部署脚本（Reality / TLS / Hysteria2）
 
-masb.sh 是一个面向 Alpine Linux（musl） 的 sing-box 服务端一键安装与配置脚本，目标是：
+Encrypt.sh 是一个面向 Alpine Linux（musl） 的 sing-box 服务端一键安装与配置脚本，目标是：
 
 一次执行，直接可用，不输出任何“看起来能用但实际连不上”的配置。
 
