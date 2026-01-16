@@ -15,9 +15,13 @@
 #   - PUBLIC_HOST 不询问：自动选择 IPv4 > IPv6（IPv6 自动加 []）
 #   - TLS：交互选择 LE(HTTP-01/开80) 或 自签
 #     * LE：签发前 DNS 校验 + 公网可达性预检 + 有证复用（30天内不过期）
+#     * LE 不需要邮箱
 #   - 输出 v2rayN 可导入链接（3条）
+#     * Reality 链接地址栏始终用 IP（PUBLIC_HOST）
+#     * TLS/HY2 若 LE 模式则地址栏用域名，否则用 IP
 #
 # 使用：
+#   apk add --no-cache bash curl
 #   bash <(curl -Ls https://raw.githubusercontent.com/hooghub/Alpine/main/masb.sh)
 # ============================================================
 
@@ -302,13 +306,13 @@ check_domain_dns_points_to_me() {
   echo "----------------------"
 }
 
-# 公网可达性预检（best-effort）：临时启 httpd:80 + 放置 challenge 文件，然后让公网代理来抓取
+# 公网可达性预检（best-effort）
+# 临时启 httpd:80 + 放置 challenge 文件，然后用公网代理拉取该 URL
 http_reachability_precheck() {
   domain="$1"
 
-  # 80 被占用时，预检无法进行（但 LE 也大概率会失败）
   if ss -lnt 2>/dev/null | grep -qE ':[[:space:]]*80[[:space:]]'; then
-    echo "[!] 80 端口被占用，跳过公网可达性预检（HTTP-01 可能失败）"
+    echo "[!] 80 端口被占用，跳过公网可达性预检（HTTP-01 很可能失败）"
     return 0
   fi
 
@@ -323,29 +327,24 @@ http_reachability_precheck() {
   echo "[i] 公网可达性预检：尝试从公网访问 http://$domain/.well-known/acme-challenge/$token"
   echo "[i] 临时启动 httpd 监听 :80（仅用于预检，随后关闭）"
 
-  # 启动临时 httpd
-  # -f: 前台；我们放到后台 & 记录 pid
   busybox httpd -f -p 0.0.0.0:80 -h "$rootdir" >/dev/null 2>&1 &
   hp="$!"
-  # 给一点启动时间
   sleep 1
 
-  # 用公网代理抓取（best-effort：代理可能偶发不可用）
-  # 代理1：jina.ai
-  # 代理2：allorigins
   url_path="http://$domain/.well-known/acme-challenge/$token"
-  enc1="$(printf "%s" "$url_path" | jq -sRr @uri)"
+  enc_url="$(printf "%s" "$url_path" | jq -sRr @uri)"
 
   ok="0"
+  # 代理1：jina.ai（r.jina.ai 会把目标网页内容转发出来）
   r1="$(curl -fsSL --max-time 8 "https://r.jina.ai/http://$domain/.well-known/acme-challenge/$token" 2>/dev/null || true)"
   printf "%s" "$r1" | grep -q "$token" && ok="1"
 
+  # 代理2：allorigins
   if [ "$ok" = "0" ]; then
-    r2="$(curl -fsSL --max-time 8 "https://api.allorigins.win/raw?url=$enc1" 2>/dev/null || true)"
+    r2="$(curl -fsSL --max-time 8 "https://api.allorigins.win/raw?url=$enc_url" 2>/dev/null || true)"
     printf "%s" "$r2" | grep -q "$token" && ok="1"
   fi
 
-  # 关闭临时 httpd
   kill "$hp" >/dev/null 2>&1 || true
   rm -rf "$rootdir" >/dev/null 2>&1 || true
 
@@ -353,8 +352,8 @@ http_reachability_precheck() {
     echo "[+] 预检通过：公网可访问 80/HTTP"
   else
     echo "[!] 预检未通过：公网代理未能取到测试文件"
-    echo "    这可能表示：80 未放行/安全组拦截/NAT 无法入站"
-    echo "    也可能仅是代理服务不可用。将继续尝试签发（acme.sh 结果为准）。"
+    echo "    可能原因：80 未放行/安全组拦截/NAT 无法入站"
+    echo "    也可能仅是代理服务不可用。将继续尝试签发（以 acme.sh 结果为准）。"
   fi
 }
 
@@ -414,12 +413,14 @@ key_matches_cert_rsa_or_ec() {
   cert="$1"
   key="$2"
 
+  # RSA：比 modulus
   if openssl x509 -in "$cert" -noout -modulus >/dev/null 2>&1 && openssl rsa -in "$key" -noout -modulus >/dev/null 2>&1; then
     cm="$(openssl x509 -in "$cert" -noout -modulus 2>/dev/null | openssl md5 | awk '{print $2}')"
     km="$(openssl rsa  -in "$key"  -noout -modulus 2>/dev/null | openssl md5 | awk '{print $2}')"
     [ -n "$cm" ] && [ "$cm" = "$km" ] && return 0
   fi
 
+  # EC/通用：比公钥
   cpub="$(openssl x509 -in "$cert" -noout -pubkey 2>/dev/null | openssl md5 | awk '{print $2}')"
   kpub="$(openssl pkey -in "$key"  -pubout 2>/dev/null | openssl md5 | awk '{print $2}')"
   [ -n "$cpub" ] && [ "$cpub" = "$kpub" ]
@@ -534,13 +535,8 @@ if [ "$TLS_MODE" = "1" ]; then
   prompt TLS_SNI "请输入用于 TLS 的域名（A 记录指向本机公网IPv4；需开放80）" ""
   [ -n "${TLS_SNI:-}" ] || die "域名不能为空"
 
-  # 1) DNS 校验
   check_domain_dns_points_to_me "$TLS_SNI"
-
-  # 2) 公网可达性预检（best-effort）
   http_reachability_precheck "$TLS_SNI"
-
-  # 3) 有证复用，否则签发
   reuse_or_issue_le_cert_http01 "$TLS_SNI" "$TLS_FULLCHAIN" "$TLS_KEY"
 
   TLS_INSECURE="0"
@@ -627,20 +623,34 @@ EOF
 echo "[+] 写入配置：$CONFIG_PATH"
 sing-box check -c "$CONFIG_PATH" >/dev/null
 
+# OpenRC
 ensure_openrc_service
 rc-service sing-box restart >/dev/null 2>&1 || rc-service sing-box start >/dev/null 2>&1 || true
 
+# 一致性校验：拒绝输出错链接
 sanity_check_reality_consistency
 
 #################################
 # ===== PUBLIC_HOST 自动选择（不询问）=====
+# IPv4 > IPv6（IPv6 自动加 []）
 #################################
 if [ -n "${PUB4:-}" ]; then
   PUBLIC_HOST="$PUB4"
 else
   PUBLIC_HOST="[$PUB6]"
 fi
-echo "[i] 分享链接使用的地址：$PUBLIC_HOST"
+echo "[i] Reality 分享链接使用的地址（IP）：$PUBLIC_HOST"
+
+#################################
+# ===== TLS/HY2 分享主机选择 =====
+# LE：TLS/HY2 用域名；自签：TLS/HY2 用 IP
+#################################
+if [ "${TLS_MODE:-2}" = "1" ] && [ -n "${TLS_SNI:-}" ]; then
+  TLS_SHARE_HOST="$TLS_SNI"
+else
+  TLS_SHARE_HOST="$PUBLIC_HOST"
+fi
+echo "[i] TLS/HY2 分享主机：$TLS_SHARE_HOST"
 
 #################################
 # ===== v2rayN 导入链接（3条）=====
@@ -648,9 +658,12 @@ echo "[i] 分享链接使用的地址：$PUBLIC_HOST"
 ENC_R_SNI="$(urlencode "$REALITY_CLIENT_SNI")"
 ENC_TLS_SNI="$(urlencode "$TLS_SNI")"
 
+# Reality：地址栏始终用 IP（避免 DNS 污染/劫持）
 VLESS_REALITY_LINK="vless://${UUID}@${PUBLIC_HOST}:${VLESS_REALITY_PORT}?type=tcp&encryption=none&security=reality&sni=${ENC_R_SNI}&insecure=${TLS_INSECURE}&fp=chrome&pbk=${REALITY_PUB}&sid=${SHORT_ID}#VLESS-Reality-${PUBLIC_HOST}"
-VLESS_TLS_LINK="vless://${UUID}@${PUBLIC_HOST}:${VLESS_TLS_PORT}?type=tcp&encryption=none&security=tls&sni=${ENC_TLS_SNI}&insecure=${TLS_INSECURE}#VLESS-TLS-${PUBLIC_HOST}"
-HY2_LINK="hysteria2://${HY2_PASSWORD}@${PUBLIC_HOST}:${HY2_PORT}?sni=${ENC_TLS_SNI}&insecure=${TLS_INSECURE}#HY2-${PUBLIC_HOST}"
+
+# TLS/HY2：LE 用域名，自签用 IP
+VLESS_TLS_LINK="vless://${UUID}@${TLS_SHARE_HOST}:${VLESS_TLS_PORT}?type=tcp&encryption=none&security=tls&sni=${ENC_TLS_SNI}&insecure=${TLS_INSECURE}#VLESS-TLS-${TLS_SHARE_HOST}"
+HY2_LINK="hysteria2://${HY2_PASSWORD}@${TLS_SHARE_HOST}:${HY2_PORT}?sni=${ENC_TLS_SNI}&insecure=${TLS_INSECURE}#HY2-${TLS_SHARE_HOST}"
 
 LINKS_PATH="/etc/sing-box/v2rayn_links.txt"
 printf "%s\n%s\n%s\n" "$VLESS_REALITY_LINK" "$VLESS_TLS_LINK" "$HY2_LINK" > "$LINKS_PATH"
