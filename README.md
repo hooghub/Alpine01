@@ -1,4 +1,4 @@
-masb.sh update Encrypt.sh
+Encrypt.sh
 
 Alpine Linux 下的 sing-box 一键部署脚本（Reality / TLS / Hysteria2）
 
