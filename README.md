@@ -111,7 +111,7 @@ Reality 的 sni 与 handshake.server 强制一致
 
 公网可达性预检（best-effort）
 
-临时在 :80 启 httpd
+临时在 :80 启 http
 
 通过公网代理访问
 
