@@ -541,7 +541,7 @@ if [ "$TLS_MODE" = "1" ]; then
 
   TLS_INSECURE="0"
 else
-  TLS_SNI="example.com"
+  TLS_SNI="kyn.com"
   make_self_signed_cert "$TLS_SNI" "$TLS_CERT" "$TLS_KEY" "$TLS_FULLCHAIN"
   TLS_INSECURE="1"
 fi
@@ -704,7 +704,7 @@ echo
 echo "已写入：$LINKS_PATH"
 echo "服务管理：rc-service sing-box restart | stop | start"
 echo "日志查看：tail -f /var/log/sing-box/sing-box.log"
-echo "配置信息：singbox配置 /etc/sing-box/config.json"
+echo "配置信息：cat /etc/sing-box/config.json"
 echo "PrivateKey：cat /etc/sing-box/reality_private_key.txt"
 echo "PublicKey ：cat /etc/sing-box/reality_public_key.txt"
 echo
