@@ -279,6 +279,7 @@ ensure_dns_tools() {
   apk add --no-cache bind-tools >/dev/null 2>&1 || true
 }
 
+# 修改点：A 或 AAAA 只要有一个命中本机公网 IP 就放行
 check_domain_dns_points_to_me() {
   domain="$1"
   ensure_dns_tools
@@ -295,7 +296,6 @@ check_domain_dns_points_to_me() {
   echo "[i] A    记录：${A_LIST:-无}"
   echo "[i] AAAA 记录：${AAAA_LIST:-无}"
 
-  # 至少需要本机有一个公网出口（前面 detect_public_ips_strict 已保证）
   match4="0"
   match6="0"
 
@@ -307,16 +307,18 @@ check_domain_dns_points_to_me() {
   fi
 
   if [ "$match4" = "1" ] || [ "$match6" = "1" ]; then
-    echo "[+] 解析校验通过（$([ "$match4" = "1" ] && echo "A命中IPv4" || true)$([ "$match4" = "1" ] && [ "$match6" = "1" ] && echo " + " || true)$([ "$match6" = "1" ] && echo "AAAA命中IPv6" || true)）"
+    msg=""
+    [ "$match4" = "1" ] && msg="A命中IPv4"
+    if [ "$match6" = "1" ]; then
+      [ -n "$msg" ] && msg="$msg + "
+      msg="${msg}AAAA命中IPv6"
+    fi
+    echo "[+] 解析校验通过（$msg）"
     echo "----------------------"
     return 0
   fi
 
   die "域名 A/AAAA 均未指向本机公网 IP（IPv4=${PUB4:-无} IPv6=${PUB6:-无}），请先修正 DNS"
-}
-
-  echo "[+] 解析校验通过"
-  echo "----------------------"
 }
 
 # 公网可达性预检（best-effort）
@@ -545,7 +547,7 @@ TLS_FULLCHAIN="/etc/sing-box/tls/fullchain.pem"
 choose_tls_mode
 
 if [ "$TLS_MODE" = "1" ]; then
-  prompt TLS_SNI "请输入用于 TLS 的域名（A 记录指向本机公网IPv4；需开放80）" ""
+  prompt TLS_SNI "请输入用于 TLS 的域名（A 或 AAAA 记录至少一个指向本机公网IP；需开放80）" ""
   [ -n "${TLS_SNI:-}" ] || die "域名不能为空"
 
   check_domain_dns_points_to_me "$TLS_SNI"
