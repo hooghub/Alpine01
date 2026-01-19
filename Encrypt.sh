@@ -11,7 +11,7 @@
 #   - 强制检测公网 IPv4/IPv6：至少一个可用，否则退出
 #   - sing-box 稳健安装：当前仓库 -> edge/community -> GitHub release(musl/static)
 #   - Reality keypair 落盘并做一致性校验，避免 pbk/private 不匹配导致 invalid connection
-#   - 端口：可输入 / 回车随机（1000-64536）
+#   - 端口：可输入 / 回车随机（10000-64536）
 #   - PUBLIC_HOST 不询问：自动选择 IPv4 > IPv6（IPv6 自动加 []）
 #   - TLS：交互选择 LE(HTTP-01/开80) 或 自签
 #     * LE：签发前 DNS 校验 + 公网可达性预检 + 有证复用（30天内不过期）
@@ -55,10 +55,10 @@ prompt() {
 #################################
 rand_port() {
   if [ -n "${RANDOM:-}" ]; then
-    echo $((1000 + RANDOM % 64536))
+    echo $((10000 + RANDOM % 64536))
   else
     n="$(od -An -N2 -tu2 /dev/urandom | tr -d ' ')"
-    echo $((1000 + n % 64536))
+    echo $((10000 + n % 64536))
   fi
 }
 
