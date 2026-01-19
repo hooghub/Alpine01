@@ -295,12 +295,25 @@ check_domain_dns_points_to_me() {
   echo "[i] A    记录：${A_LIST:-无}"
   echo "[i] AAAA 记录：${AAAA_LIST:-无}"
 
-  if [ -n "${PUB4:-}" ]; then
-    echo "$A_LIST" | grep -qw "$PUB4" || die "域名 A 记录未指向本机公网 IPv4（$PUB4），请先修正 DNS"
-  else
-    [ -n "${PUB6:-}" ] || die "本机无公网 IPv4/IPv6，无法进行域名校验"
-    echo "$AAAA_LIST" | grep -qw "$PUB6" || die "域名 AAAA 记录未指向本机公网 IPv6（$PUB6），请先修正 DNS"
+  # 至少需要本机有一个公网出口（前面 detect_public_ips_strict 已保证）
+  match4="0"
+  match6="0"
+
+  if [ -n "${PUB4:-}" ] && [ -n "${A_LIST:-}" ]; then
+    echo "$A_LIST" | grep -qw "$PUB4" && match4="1"
   fi
+  if [ -n "${PUB6:-}" ] && [ -n "${AAAA_LIST:-}" ]; then
+    echo "$AAAA_LIST" | grep -qw "$PUB6" && match6="1"
+  fi
+
+  if [ "$match4" = "1" ] || [ "$match6" = "1" ]; then
+    echo "[+] 解析校验通过（$([ "$match4" = "1" ] && echo "A命中IPv4" || true)$([ "$match4" = "1" ] && [ "$match6" = "1" ] && echo " + " || true)$([ "$match6" = "1" ] && echo "AAAA命中IPv6" || true)）"
+    echo "----------------------"
+    return 0
+  fi
+
+  die "域名 A/AAAA 均未指向本机公网 IP（IPv4=${PUB4:-无} IPv6=${PUB6:-无}），请先修正 DNS"
+}
 
   echo "[+] 解析校验通过"
   echo "----------------------"
