@@ -556,7 +556,6 @@ if [ "$TLS_MODE" = "1" ]; then
   [ -n "${TLS_SNI:-}" ] || die "域名不能为空"
 
   check_domain_dns_points_to_me "$TLS_SNI"
-  http_reachability_precheck "$TLS_SNI"
   reuse_or_issue_le_cert_http01 "$TLS_SNI" "$TLS_FULLCHAIN" "$TLS_KEY"
 
   TLS_INSECURE="0"
