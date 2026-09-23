@@ -446,31 +446,33 @@ reuse_or_issue_le_cert_http01() {
   fullchain="$2"
   key="$3"
 
-  if [ -s "$fullchain" ] && [ -s "$key" ]; then
-    echo
-    echo "[i] 检测到已有证书文件："
-    echo "    fullchain: $fullchain"
-    echo "    key:       $key"
+  echo
+  echo "[i] 检查 acme.sh 是否已有域名证书：$domain"
 
-    if cert_has_domain_san "$fullchain" "$domain" \
-      && cert_not_expiring_soon "$fullchain" 30 \
-      && key_matches_cert_rsa_or_ec "$fullchain" "$key"
-    then
-      echo "[+] 证书可复用（SAN匹配且30天内不过期），跳过签发"
-      return 0
-    fi
+  if "$HOME/.acme.sh/acme.sh" --list 2>/dev/null |
+    awk 'NR > 1 {print $1}' |
+    grep -Fxq "$domain"
+  then
+    echo "[+] acme.sh 已存在证书：$domain"
+    echo "[i] 直接安装已有证书到 sing-box..."
 
-    echo "[!] 已有证书不可用，将重新申请 Let's Encrypt"
-  else
-    echo "[i] 未检测到已有证书，将申请 Let's Encrypt"
+    "$HOME/.acme.sh/acme.sh" --install-cert -d "$domain" \
+      --fullchain-file "$fullchain" \
+      --key-file "$key" \
+      --reloadcmd "true" \
+      || die "已有证书安装失败：$domain"
+
+    echo "[+] 证书安装完成"
+    return 0
   fi
 
+  echo "[i] acme.sh 未找到 $domain 的证书"
   echo "[i] 开始执行 HTTP-01 公网可达性预检..."
+
   http_reachability_precheck "$domain"
 
   issue_le_cert_http01 "$domain" "$fullchain" "$key"
 }
-
 #################################
 # ===== OpenRC 服务 =====
 #################################
