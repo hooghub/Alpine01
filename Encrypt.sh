@@ -452,21 +452,22 @@ reuse_or_issue_le_cert_http01() {
     echo "    fullchain: $fullchain"
     echo "    key:       $key"
 
-    # 证书存在，并且通过完整检查
     if cert_has_domain_san "$fullchain" "$domain" \
       && cert_not_expiring_soon "$fullchain" 30 \
       && key_matches_cert_rsa_or_ec "$fullchain" "$key"
     then
-      echo "[+] 检测到可用证书，直接复用，跳过签发"
+      echo "[+] 证书可复用（SAN匹配且30天内不过期），跳过签发"
       return 0
     fi
 
     echo "[!] 已有证书不可用，将重新申请 Let's Encrypt"
   else
-    echo "[i] 未检测到可用证书，将申请 Let's Encrypt"
+    echo "[i] 未检测到已有证书，将申请 Let's Encrypt"
   fi
 
-  # 只有没有可用证书时，才执行申请
+  echo "[i] 开始执行 HTTP-01 公网可达性预检..."
+  http_reachability_precheck "$domain"
+
   issue_le_cert_http01 "$domain" "$fullchain" "$key"
 }
 
